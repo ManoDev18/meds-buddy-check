@@ -1,16 +1,19 @@
-
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Onboarding from "@/components/Onboarding";
 import PatientDashboard from "@/components/PatientDashboard";
 import CaretakerDashboard from "@/components/CaretakerDashboard";
 import { Button } from "@/components/ui/button";
 import { Users, User } from "lucide-react";
+import { Link } from "react-router-dom";
+import supabase from "@/helpers/supabaseClient";
 
 type UserType = "patient" | "caretaker" | null;
 
 const Index = () => {
   const [userType, setUserType] = useState<UserType>(null);
   const [isOnboarded, setIsOnboarded] = useState(false);
+  const navigate = useNavigate();
 
   const handleOnboardingComplete = (type: UserType) => {
     setUserType(type);
@@ -20,6 +23,17 @@ const Index = () => {
   const switchUserType = () => {
     const newType = userType === "patient" ? "caretaker" : "patient";
     setUserType(newType);
+  };
+
+  const handleSignOut = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error("Sign out error:", error.message);
+    } else {
+      setUserType(null);
+      setIsOnboarded(false);
+      navigate("/login"); // Redirect to home or login page
+    }
   };
 
   if (!isOnboarded) {
@@ -41,15 +55,21 @@ const Index = () => {
               </p>
             </div>
           </div>
-          
-          <Button 
-            variant="outline" 
-            onClick={switchUserType}
-            className="flex items-center gap-2 hover:bg-accent transition-colors"
-          >
-            {userType === "patient" ? <Users className="w-4 h-4" /> : <User className="w-4 h-4" />}
-            Switch to {userType === "patient" ? "Caretaker" : "Patient"}
-          </Button>
+          <div className="flex gap-4 items-center">
+            <Link to="/view-list" className="font-medium hover:text-blue-500 duration-300">View List</Link>
+            <Link to="/medications" className="font-medium hover:text-blue-500 duration-300">Medications</Link>
+            <Button
+              variant="outline"
+              onClick={switchUserType}
+              className="flex items-center gap-2 hover:bg-accent transition-colors"
+            >
+              {userType === "patient" ? <Users className="w-4 h-4" /> : <User className="w-4 h-4" />}
+              Switch to {userType === "patient" ? "Caretaker" : "Patient"}
+            </Button>
+            <Button onClick={handleSignOut}>
+              Signout
+            </Button>
+          </div>
         </div>
       </header>
 

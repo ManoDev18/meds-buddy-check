@@ -1,48 +1,51 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Calendar } from "@/components/ui/calendar";
-import { Users, Bell, Calendar as CalendarIcon, Mail, AlertTriangle, Check, Clock, Camera } from "lucide-react";
+import { Users, Bell, Calendar as CalendarIcon, Mail, AlertTriangle, Check, Clock, Camera, Loader2 } from "lucide-react";
 import NotificationSettings from "./NotificationSettings";
 import { format, subDays, isToday, isBefore, startOfDay } from "date-fns";
+import { useMedications } from "@/hooks/useMedications";
+import supabase from "@/helpers/supabaseClient";
+import { useToast } from "@/hooks/use-toast";
 
 const CaretakerDashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [userId, setUserId] = useState<string | null>(null);
+  const [patientId, setPatientId] = useState<string | null>(null);
+  const { toast } = useToast();
 
-  // Mock data for demonstration
-  const patientName = "Eleanor Thompson";
-  const adherenceRate = 85;
-  const currentStreak = 5;
-  const missedDoses = 3;
+  const {
+    medications,
+    medicationLogs,
+    isLoading,
+    getDashboardStats,
+    getRecentActivity,
+  } = useMedications(patientId || '');
 
-  // Mock data for taken medications (same as in PatientDashboard)
-  const takenDates = new Set([
-    "2024-06-10", "2024-06-09", "2024-06-07", "2024-06-06", 
-    "2024-06-05", "2024-06-04", "2024-06-02", "2024-06-01"
-  ]);
-
-  const recentActivity = [
-    { date: "2024-06-10", taken: true, time: "8:30 AM", hasPhoto: true },
-    { date: "2024-06-09", taken: true, time: "8:15 AM", hasPhoto: false },
-    { date: "2024-06-08", taken: false, time: null, hasPhoto: false },
-    { date: "2024-06-07", taken: true, time: "8:45 AM", hasPhoto: true },
-    { date: "2024-06-06", taken: true, time: "8:20 AM", hasPhoto: false },
-  ];
-
-  const dailyMedication = {
-    name: "Daily Medication Set",
-    time: "8:00 AM",
-    status: takenDates.has(format(new Date(), 'yyyy-MM-dd')) ? "completed" : "pending"
-  };
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserId(user.id);
+        // TODO: In a real app, you would fetch the associated patient ID
+        // For now, we'll use the same user ID for demonstration
+        setPatientId(user.id);
+      }
+    };
+    getUser();
+  }, []);
 
   const handleSendReminderEmail = () => {
-    console.log("Sending reminder email to patient...");
-    // Here you would implement email sending functionality
-    alert("Reminder email sent to " + patientName);
+    // TODO: Implement email sending functionality
+    toast({
+      title: "Reminder Sent",
+      description: "A reminder email has been sent to the patient.",
+    });
   };
 
   const handleConfigureNotifications = () => {
@@ -52,6 +55,18 @@ const CaretakerDashboard = () => {
   const handleViewCalendar = () => {
     setActiveTab("calendar");
   };
+
+  const stats = getDashboardStats();
+  const recentActivity = getRecentActivity();
+  const takenDates = new Set(medicationLogs?.map(log => log.date) || []);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -63,25 +78,25 @@ const CaretakerDashboard = () => {
           </div>
           <div>
             <h2 className="text-3xl font-bold">Caretaker Dashboard</h2>
-            <p className="text-white/90 text-lg">Monitoring {patientName}'s medication adherence</p>
+            <p className="text-white/90 text-lg">Monitoring patient's medication adherence</p>
           </div>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white/10 rounded-xl p-4 backdrop-blur-sm">
-            <div className="text-2xl font-bold">{adherenceRate}%</div>
+            <div className="text-2xl font-bold">{stats?.adherenceRate || 0}%</div>
             <div className="text-white/80">Adherence Rate</div>
           </div>
           <div className="bg-white/10 rounded-xl p-4 backdrop-blur-sm">
-            <div className="text-2xl font-bold">{currentStreak}</div>
+            <div className="text-2xl font-bold">{stats?.currentStreak || 0}</div>
             <div className="text-white/80">Current Streak</div>
           </div>
           <div className="bg-white/10 rounded-xl p-4 backdrop-blur-sm">
-            <div className="text-2xl font-bold">{missedDoses}</div>
+            <div className="text-2xl font-bold">{stats?.missedDoses || 0}</div>
             <div className="text-white/80">Missed This Month</div>
           </div>
           <div className="bg-white/10 rounded-xl p-4 backdrop-blur-sm">
-            <div className="text-2xl font-bold">{recentActivity.filter(a => a.taken).length}</div>
+            <div className="text-2xl font-bold">{stats?.takenThisWeek || 0}</div>
             <div className="text-white/80">Taken This Week</div>
           </div>
         </div>
@@ -107,15 +122,17 @@ const CaretakerDashboard = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center justify-between p-3 bg-accent/50 rounded-lg">
-                  <div>
-                    <h4 className="font-medium">{dailyMedication.name}</h4>
-                    <p className="text-sm text-muted-foreground">{dailyMedication.time}</p>
+                {medications?.map((med) => (
+                  <div key={med.id} className="flex items-center justify-between p-3 bg-accent/50 rounded-lg mb-2">
+                    <div>
+                      <h4 className="font-medium">{med.name}</h4>
+                      <p className="text-sm text-muted-foreground">{med.dosage} - {med.frequency}</p>
+                    </div>
+                    <Badge variant={takenDates.has(format(new Date(), 'yyyy-MM-dd')) ? "secondary" : "destructive"}>
+                      {takenDates.has(format(new Date(), 'yyyy-MM-dd')) ? "Completed" : "Pending"}
+                    </Badge>
                   </div>
-                  <Badge variant={dailyMedication.status === "pending" ? "destructive" : "secondary"}>
-                    {dailyMedication.status === "pending" ? "Pending" : "Completed"}
-                  </Badge>
-                </div>
+                ))}
               </CardContent>
             </Card>
 
@@ -162,20 +179,22 @@ const CaretakerDashboard = () => {
               <div className="space-y-4">
                 <div className="flex justify-between text-sm">
                   <span>Overall Progress</span>
-                  <span>{adherenceRate}%</span>
+                  <span>{stats?.adherenceRate || 0}%</span>
                 </div>
-                <Progress value={adherenceRate} className="h-3" />
+                <Progress value={stats?.adherenceRate || 0} className="h-3" />
                 <div className="grid grid-cols-3 gap-4 text-center text-sm">
                   <div>
-                    <div className="font-medium text-green-600">22 days</div>
+                    <div className="font-medium text-green-600">{stats?.takenThisWeek || 0} days</div>
                     <div className="text-muted-foreground">Taken</div>
                   </div>
                   <div>
-                    <div className="font-medium text-red-600">3 days</div>
+                    <div className="font-medium text-red-600">{stats?.missedDoses || 0} days</div>
                     <div className="text-muted-foreground">Missed</div>
                   </div>
                   <div>
-                    <div className="font-medium text-blue-600">5 days</div>
+                    <div className="font-medium text-blue-600">
+                      {30 - (stats?.takenThisWeek || 0) - (stats?.missedDoses || 0)} days
+                    </div>
                     <div className="text-muted-foreground">Remaining</div>
                   </div>
                 </div>
@@ -184,7 +203,7 @@ const CaretakerDashboard = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="activity" className="space-y-6">
+        <TabsContent value="activity">
           <Card>
             <CardHeader>
               <CardTitle>Recent Medication Activity</CardTitle>
@@ -208,7 +227,7 @@ const CaretakerDashboard = () => {
                           {format(new Date(activity.date), 'EEEE, MMMM d')}
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          {activity.taken ? `Taken at ${activity.time}` : 'Medication missed'}
+                          {activity.medication_name} - {activity.taken ? `Taken at ${activity.time}` : 'Medication missed'}
                         </p>
                       </div>
                     </div>
@@ -299,7 +318,7 @@ const CaretakerDashboard = () => {
                           <span className="font-medium text-green-800">Medication Taken</span>
                         </div>
                         <p className="text-sm text-green-700">
-                          {patientName} successfully took their medication on this day.
+                          Patient successfully took their medication on this day.
                         </p>
                       </div>
                     ) : isBefore(selectedDate, startOfDay(new Date())) ? (
@@ -309,7 +328,7 @@ const CaretakerDashboard = () => {
                           <span className="font-medium text-red-800">Medication Missed</span>
                         </div>
                         <p className="text-sm text-red-700">
-                          {patientName} did not take their medication on this day.
+                          Patient did not take their medication on this day.
                         </p>
                       </div>
                     ) : isToday(selectedDate) ? (
@@ -319,7 +338,7 @@ const CaretakerDashboard = () => {
                           <span className="font-medium text-blue-800">Today</span>
                         </div>
                         <p className="text-sm text-blue-700">
-                          Monitor {patientName}'s medication status for today.
+                          Monitor patient's medication status for today.
                         </p>
                       </div>
                     ) : (

@@ -1,63 +1,90 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { Badge } from "@/components/ui/badge";
-import { Check, Calendar as CalendarIcon, Image, User } from "lucide-react";
+import { Check, Calendar as CalendarIcon, Image, User, Loader2 } from "lucide-react";
 import MedicationTracker from "./MedicationTracker";
 import { format, isToday, isBefore, startOfDay } from "date-fns";
+import { useMedications } from "@/hooks/useMedications";
+import supabase from "@/helpers/supabaseClient";
+import { useToast } from "@/hooks/use-toast";
 
 const PatientDashboard = () => {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [takenDates, setTakenDates] = useState<Set<string>>(new Set());
+  const [userId, setUserId] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const {
+    medications,
+    medicationLogs,
+    isLoading,
+    markMedicationTaken,
+    getDashboardStats,
+  } = useMedications(userId || '');
+
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserId(user.id);
+      }
+    };
+    getUser();
+  }, []);
 
   const today = new Date();
   const todayStr = format(today, 'yyyy-MM-dd');
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
   const isTodaySelected = isToday(selectedDate);
+
+  const takenDates = new Set(medicationLogs?.map(log => log.date) || []);
   const isSelectedDateTaken = takenDates.has(selectedDateStr);
 
-  const handleMarkTaken = (date: string, imageFile?: File) => {
-    setTakenDates(prev => new Set(prev).add(date));
-    console.log('Medication marked as taken for:', date);
-    if (imageFile) {
-      console.log('Proof image uploaded:', imageFile.name);
+  const handleMarkTaken = async (date: string, imageFile?: File) => {
+    if (!medications?.length) {
+      toast({
+        title: "No medications",
+        description: "Please add medications first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Mark all medications as taken for the day
+      await Promise.all(
+        medications.map(med => 
+          markMedicationTaken.mutateAsync({
+            medicationId: med.id,
+            date,
+          })
+        )
+      );
+
+      toast({
+        title: "Success",
+        description: "Medications marked as taken",
+      });
+    } catch (error) {
+      console.error('Error marking medications as taken:', error);
+      toast({
+        title: "Error",
+        description: "Failed to mark medications as taken",
+        variant: "destructive",
+      });
     }
   };
 
-  const getStreakCount = () => {
-    let streak = 0;
-    let currentDate = new Date(today);
-    
-    while (takenDates.has(format(currentDate, 'yyyy-MM-dd')) && streak < 30) {
-      streak++;
-      currentDate.setDate(currentDate.getDate() - 1);
-    }
-    
-    return streak;
-  };
+  const stats = getDashboardStats();
 
-  const getDayClassName = (date: Date) => {
-    const dateStr = format(date, 'yyyy-MM-dd');
-    const isPast = isBefore(date, startOfDay(today));
-    const isCurrentDay = isToday(date);
-    const isTaken = takenDates.has(dateStr);
-    
-    let className = "";
-    
-    if (isCurrentDay) {
-      className += " bg-blue-100 border-blue-300 ";
-    }
-    
-    if (isTaken) {
-      className += " bg-green-100 text-green-800 ";
-    } else if (isPast) {
-      className += " bg-red-50 text-red-600 ";
-    }
-    
-    return className;
-  };
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -75,7 +102,7 @@ const PatientDashboard = () => {
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
           <div className="bg-white/10 rounded-xl p-4 backdrop-blur-sm">
-            <div className="text-2xl font-bold">{getStreakCount()}</div>
+            <div className="text-2xl font-bold">{stats?.currentStreak || 0}</div>
             <div className="text-white/80">Day Streak</div>
           </div>
           <div className="bg-white/10 rounded-xl p-4 backdrop-blur-sm">
@@ -83,7 +110,7 @@ const PatientDashboard = () => {
             <div className="text-white/80">Today's Status</div>
           </div>
           <div className="bg-white/10 rounded-xl p-4 backdrop-blur-sm">
-            <div className="text-2xl font-bold">{Math.round((takenDates.size / 30) * 100)}%</div>
+            <div className="text-2xl font-bold">{stats?.adherenceRate || 0}%</div>
             <div className="text-white/80">Monthly Rate</div>
           </div>
         </div>
@@ -100,12 +127,19 @@ const PatientDashboard = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <MedicationTracker 
-                date={selectedDateStr}
-                isTaken={isSelectedDateTaken}
-                onMarkTaken={handleMarkTaken}
-                isToday={isTodaySelected}
-              />
+              {medications?.length ? (
+                <MedicationTracker 
+                  date={selectedDateStr}
+                  isTaken={isSelectedDateTaken}
+                  onMarkTaken={handleMarkTaken}
+                  isToday={isTodaySelected}
+                  medications={medications}
+                />
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  No medications added yet. Add your medications to start tracking.
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

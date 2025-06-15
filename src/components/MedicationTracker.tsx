@@ -1,28 +1,24 @@
-
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Check, Image, Camera, Clock } from "lucide-react";
+import { Check, Image, Camera, Clock, Loader2 } from "lucide-react";
 import { format } from "date-fns";
+import { Medication } from "@/lib/types";
 
 interface MedicationTrackerProps {
   date: string;
   isTaken: boolean;
   onMarkTaken: (date: string, imageFile?: File) => void;
   isToday: boolean;
+  medications: Medication[];
 }
 
-const MedicationTracker = ({ date, isTaken, onMarkTaken, isToday }: MedicationTrackerProps) => {
+const MedicationTracker = ({ date, isTaken, onMarkTaken, isToday, medications }: MedicationTrackerProps) => {
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const dailyMedication = {
-    name: "Daily Medication Set",
-    time: "8:00 AM",
-    description: "Complete set of daily tablets"
-  };
 
   const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -36,128 +32,123 @@ const MedicationTracker = ({ date, isTaken, onMarkTaken, isToday }: MedicationTr
     }
   };
 
-  const handleMarkTaken = () => {
-    onMarkTaken(date, selectedImage || undefined);
-    setSelectedImage(null);
-    setImagePreview(null);
+  const handleMarkTaken = async () => {
+    setIsSubmitting(true);
+    try {
+      await onMarkTaken(date, selectedImage || undefined);
+      setSelectedImage(null);
+      setImagePreview(null);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (isTaken) {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-center p-8 bg-green-50 rounded-xl border-2 border-green-200">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Check className="w-8 h-8 text-white" />
-            </div>
-            <h3 className="text-xl font-semibold text-green-800 mb-2">
-              Medication Completed!
-            </h3>
-            <p className="text-green-600">
-              Great job! You've taken your medication for {format(new Date(date), 'MMMM d, yyyy')}.
-            </p>
+      <div className="p-6 bg-green-50 rounded-lg border border-green-200">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+            <Check className="w-6 h-6 text-green-600" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-green-800">Medications Taken</h3>
+            <p className="text-sm text-green-600">All medications have been marked as taken for this day</p>
           </div>
         </div>
-        
-        <Card className="border-green-200 bg-green-50/50">
-          <CardContent className="flex items-center justify-between p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
-                <Check className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h4 className="font-medium text-green-800">{dailyMedication.name}</h4>
-                <p className="text-sm text-green-600">{dailyMedication.description}</p>
-              </div>
+        {medications.map((med) => (
+          <div key={med.id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-green-100 mb-2">
+            <div>
+              <p className="font-medium">{med.name}</p>
+              <p className="text-sm text-muted-foreground">{med.dosage} - {med.frequency}</p>
             </div>
-            <Badge variant="secondary" className="bg-green-100 text-green-800">
-              <Clock className="w-3 h-3 mr-1" />
-              {dailyMedication.time}
-            </Badge>
-          </CardContent>
-        </Card>
+            <Badge variant="secondary">Taken</Badge>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (!isToday) {
+    return (
+      <div className="p-6 bg-gray-50 rounded-lg border border-gray-200 text-center">
+        <p className="text-muted-foreground">
+          {isBefore(new Date(date), new Date()) 
+            ? "This day has passed. You cannot mark medications as taken for past dates."
+            : "You can mark medications as taken when this day arrives."}
+        </p>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <Card className="hover:shadow-md transition-shadow">
-        <CardContent className="flex items-center justify-between p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-              <span className="text-blue-600 font-medium">1</span>
-            </div>
+      <div className="space-y-4">
+        {medications.map((med) => (
+          <div key={med.id} className="flex items-center justify-between p-4 bg-accent/50 rounded-lg">
             <div>
-              <h4 className="font-medium">{dailyMedication.name}</h4>
-              <p className="text-sm text-muted-foreground">{dailyMedication.description}</p>
+              <h4 className="font-medium">{med.name}</h4>
+              <p className="text-sm text-muted-foreground">{med.dosage} - {med.frequency}</p>
             </div>
+            <Badge variant="outline">Pending</Badge>
           </div>
-          <Badge variant="outline">
-            <Clock className="w-3 h-3 mr-1" />
-            {dailyMedication.time}
-          </Badge>
-        </CardContent>
-      </Card>
+        ))}
+      </div>
 
-      {/* Image Upload Section */}
-      <Card className="border-dashed border-2 border-border/50">
-        <CardContent className="p-6">
-          <div className="text-center">
-            <Image className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="font-medium mb-2">Add Proof Photo (Optional)</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Take a photo of your medication or pill organizer as confirmation
-            </p>
-            
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleImageSelect}
-              ref={fileInputRef}
-              className="hidden"
-            />
-            
-            <Button
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
-              className="mb-4"
-            >
-              <Camera className="w-4 h-4 mr-2" />
-              {selectedImage ? "Change Photo" : "Take Photo"}
-            </Button>
-            
-            {imagePreview && (
-              <div className="mt-4">
-                <img
-                  src={imagePreview}
-                  alt="Medication proof"
-                  className="max-w-full h-32 object-cover rounded-lg mx-auto border-2 border-border"
-                />
-                <p className="text-sm text-muted-foreground mt-2">
-                  Photo selected: {selectedImage?.name}
-                </p>
-              </div>
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-4">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex-1"
+          >
+            <Image className="w-4 h-4 mr-2" />
+            {selectedImage ? "Change Photo" : "Add Photo (Optional)"}
+          </Button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleImageSelect}
+            accept="image/*"
+            className="hidden"
+          />
+          <Button
+            onClick={handleMarkTaken}
+            disabled={isSubmitting}
+            className="flex-1 bg-gradient-to-r from-blue-500 to-green-500 hover:shadow-lg transition-colors duration-300"
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Marking as Taken...
+              </>
+            ) : (
+              "Mark All as Taken"
             )}
+          </Button>
+        </div>
+
+        {imagePreview && (
+          <div className="relative">
+            <img
+              src={imagePreview}
+              alt="Medication proof"
+              className="w-full h-48 object-cover rounded-lg"
+            />
+            <Button
+              variant="destructive"
+              size="sm"
+              className="absolute top-2 right-2"
+              onClick={() => {
+                setSelectedImage(null);
+                setImagePreview(null);
+              }}
+            >
+              Remove
+            </Button>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Mark as Taken Button */}
-      <Button
-        onClick={handleMarkTaken}
-        className="w-full py-4 text-lg bg-green-600 hover:bg-green-700 text-white"
-        disabled={!isToday}
-      >
-        <Check className="w-5 h-5 mr-2" />
-        {isToday ? "Mark as Taken" : "Cannot mark future dates"}
-      </Button>
-
-      {!isToday && (
-        <p className="text-center text-sm text-muted-foreground">
-          You can only mark today's medication as taken
-        </p>
-      )}
+        )}
+      </div>
     </div>
   );
 };
