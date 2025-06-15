@@ -58,7 +58,16 @@ const CaretakerDashboard = () => {
 
   const stats = getDashboardStats();
   const recentActivity = getRecentActivity();
-  const takenDates = new Set(medicationLogs?.map(log => log.date) || []);
+  
+  // Create a map of date -> medication IDs that were taken
+  const medicationTakenMap = medicationLogs?.reduce((map, log) => {
+    const dateStr = log.date;
+    if (!map.has(dateStr)) {
+      map.set(dateStr, new Set());
+    }
+    map.get(dateStr)?.add(log.medication_id);
+    return map;
+  }, new Map<string, Set<string>>());
 
   if (isLoading) {
     return (
@@ -122,17 +131,23 @@ const CaretakerDashboard = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {medications?.map((med) => (
-                  <div key={med.id} className="flex items-center justify-between p-3 bg-accent/50 rounded-lg mb-2">
-                    <div>
-                      <h4 className="font-medium">{med.name}</h4>
-                      <p className="text-sm text-muted-foreground">{med.dosage} - {med.frequency}</p>
+                {medications?.map((med) => {
+                  const todayStr = format(new Date(), 'yyyy-MM-dd');
+                  const isTaken = medicationTakenMap?.has(todayStr) && 
+                                 medicationTakenMap?.get(todayStr)?.has(med.id);
+                  
+                  return (
+                    <div key={med.id} className="flex items-center justify-between p-3 bg-accent/50 rounded-lg mb-2">
+                      <div>
+                        <h4 className="font-medium">{med.name}</h4>
+                        <p className="text-sm text-muted-foreground">{med.dosage} - {med.frequency}</p>
+                      </div>
+                      <Badge variant={isTaken ? "secondary" : "destructive"}>
+                        {isTaken ? "Completed" : "Pending"}
+                      </Badge>
                     </div>
-                    <Badge variant={takenDates.has(format(new Date(), 'yyyy-MM-dd')) ? "secondary" : "destructive"}>
-                      {takenDates.has(format(new Date(), 'yyyy-MM-dd')) ? "Completed" : "Pending"}
-                    </Badge>
-                  </div>
-                ))}
+                  );
+                })}
               </CardContent>
             </Card>
 
@@ -268,19 +283,26 @@ const CaretakerDashboard = () => {
                     components={{
                       DayContent: ({ date }) => {
                         const dateStr = format(date, 'yyyy-MM-dd');
-                        const isTaken = takenDates.has(dateStr);
+                        const medicationsForDate = medications?.filter(med => 
+                          medicationTakenMap?.get(dateStr)?.has(med.id)
+                        );
+                        const allMedicationsTaken = medicationsForDate?.length === medications?.length;
+                        const someMedicationsTaken = medicationsForDate?.length > 0;
                         const isPast = isBefore(date, startOfDay(new Date()));
                         const isCurrentDay = isToday(date);
                         
                         return (
                           <div className="relative w-full h-full flex items-center justify-center">
                             <span>{date.getDate()}</span>
-                            {isTaken && (
+                            {allMedicationsTaken && (
                               <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
                                 <Check className="w-2 h-2 text-white" />
                               </div>
                             )}
-                            {!isTaken && isPast && !isCurrentDay && (
+                            {someMedicationsTaken && !allMedicationsTaken && (
+                              <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-500 rounded-full"></div>
+                            )}
+                            {!someMedicationsTaken && isPast && !isCurrentDay && (
                               <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-400 rounded-full"></div>
                             )}
                           </div>
@@ -292,11 +314,15 @@ const CaretakerDashboard = () => {
                   <div className="mt-4 space-y-2 text-sm">
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                      <span>Medication taken</span>
+                      <span>All medications taken</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                      <span>Some medications taken</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 bg-red-400 rounded-full"></div>
-                      <span>Missed medication</span>
+                      <span>Medications missed</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
@@ -311,47 +337,86 @@ const CaretakerDashboard = () => {
                   </h4>
                   
                   <div className="space-y-4">
-                    {takenDates.has(format(selectedDate, 'yyyy-MM-dd')) ? (
-                      <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Check className="w-5 h-5 text-green-600" />
-                          <span className="font-medium text-green-800">Medication Taken</span>
-                        </div>
-                        <p className="text-sm text-green-700">
-                          Patient successfully took their medication on this day.
-                        </p>
-                      </div>
-                    ) : isBefore(selectedDate, startOfDay(new Date())) ? (
-                      <div className="p-4 bg-red-50 rounded-lg border border-red-200">
-                        <div className="flex items-center gap-2 mb-2">
-                          <AlertTriangle className="w-5 h-5 text-red-600" />
-                          <span className="font-medium text-red-800">Medication Missed</span>
-                        </div>
-                        <p className="text-sm text-red-700">
-                          Patient did not take their medication on this day.
-                        </p>
-                      </div>
-                    ) : isToday(selectedDate) ? (
-                      <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Clock className="w-5 h-5 text-blue-600" />
-                          <span className="font-medium text-blue-800">Today</span>
-                        </div>
-                        <p className="text-sm text-blue-700">
-                          Monitor patient's medication status for today.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                        <div className="flex items-center gap-2 mb-2">
-                          <CalendarIcon className="w-5 h-5 text-gray-600" />
-                          <span className="font-medium text-gray-800">Future Date</span>
-                        </div>
-                        <p className="text-sm text-gray-700">
-                          This date is in the future.
-                        </p>
-                      </div>
-                    )}
+                    {(() => {
+                      const dateStr = format(selectedDate, 'yyyy-MM-dd');
+                      const medicationsForDate = medications?.filter(med => 
+                        medicationTakenMap?.get(dateStr)?.has(med.id)
+                      );
+                      const allMedicationsTaken = medicationsForDate?.length === medications?.length;
+                      const someMedicationsTaken = medicationsForDate?.length > 0;
+                      const isPast = isBefore(selectedDate, startOfDay(new Date()));
+                      const isCurrentDay = isToday(selectedDate);
+
+                      if (allMedicationsTaken) {
+                        return (
+                          <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Check className="w-5 h-5 text-green-600" />
+                              <span className="font-medium text-green-800">All Medications Taken</span>
+                            </div>
+                            <p className="text-sm text-green-700">
+                              Patient successfully took all medications on this day.
+                            </p>
+                          </div>
+                        );
+                      } else if (someMedicationsTaken) {
+                        return (
+                          <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                            <div className="flex items-center gap-2 mb-2">
+                              <AlertTriangle className="w-5 h-5 text-yellow-600" />
+                              <span className="font-medium text-yellow-800">Some Medications Taken</span>
+                            </div>
+                            <p className="text-sm text-yellow-700">
+                              Patient took {medicationsForDate?.length} of {medications?.length} medications on this day.
+                            </p>
+                            <div className="mt-2">
+                              <p className="text-xs font-medium text-yellow-800">Taken:</p>
+                              <ul className="text-xs text-yellow-700">
+                                {medicationsForDate?.map(med => (
+                                  <li key={med.id}>• {med.name}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+                        );
+                      } else if (isPast) {
+                        return (
+                          <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+                            <div className="flex items-center gap-2 mb-2">
+                              <AlertTriangle className="w-5 h-5 text-red-600" />
+                              <span className="font-medium text-red-800">Medications Missed</span>
+                            </div>
+                            <p className="text-sm text-red-700">
+                              Patient did not take any medications on this day.
+                            </p>
+                          </div>
+                        );
+                      } else if (isCurrentDay) {
+                        return (
+                          <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Clock className="w-5 h-5 text-blue-600" />
+                              <span className="font-medium text-blue-800">Today</span>
+                            </div>
+                            <p className="text-sm text-blue-700">
+                              Monitor patient's medication status for today.
+                            </p>
+                          </div>
+                        );
+                      } else {
+                        return (
+                          <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div className="flex items-center gap-2 mb-2">
+                              <CalendarIcon className="w-5 h-5 text-gray-600" />
+                              <span className="font-medium text-gray-800">Future Date</span>
+                            </div>
+                            <p className="text-sm text-gray-700">
+                              This date is in the future.
+                            </p>
+                          </div>
+                        );
+                      }
+                    })()}
                   </div>
                 </div>
               </div>

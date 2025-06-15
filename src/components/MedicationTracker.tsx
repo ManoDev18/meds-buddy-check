@@ -1,150 +1,97 @@
-import { useState, useRef } from "react";
+// MedicationTracker.tsx
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Check, Image, Camera, Clock, Loader2 } from "lucide-react";
-import { format } from "date-fns";
-import { Medication } from "@/lib/types";
+import { Check, AlertTriangle, Clock, Image } from "lucide-react";
 
-interface MedicationTrackerProps {
+export interface MedicationTrackerProps {
   date: string;
   isTaken: boolean;
-  onMarkTaken: (date: string, imageFile?: File) => void;
+  partialTaken?: boolean;
+  takenMedications?: Medication[];
+  onMarkTaken: (date: string, imageFile?: File) => Promise<void>;
   isToday: boolean;
   medications: Medication[];
 }
 
-const MedicationTracker = ({ date, isTaken, onMarkTaken, isToday, medications }: MedicationTrackerProps) => {
-  const [selectedImage, setSelectedImage] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+const MedicationTracker = ({
+  date,
+  isTaken,
+  partialTaken = false,
+  takenMedications = [],
+  onMarkTaken,
+  isToday,
+  medications
+}: MedicationTrackerProps) => {
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (file) {
-      setSelectedImage(file);
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setImagePreview(e.target?.result as string);
-      };
-      reader.readAsDataURL(file);
+      onMarkTaken(date, file);
     }
   };
-
-  const handleMarkTaken = async () => {
-    setIsSubmitting(true);
-    try {
-      await onMarkTaken(date, selectedImage || undefined);
-      setSelectedImage(null);
-      setImagePreview(null);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  if (isTaken) {
-    return (
-      <div className="p-6 bg-green-50 rounded-lg border border-green-200">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-            <Check className="w-6 h-6 text-green-600" />
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold text-green-800">Medications Taken</h3>
-            <p className="text-sm text-green-600">All medications have been marked as taken for this day</p>
-          </div>
-        </div>
-        {medications.map((med) => (
-          <div key={med.id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-green-100 mb-2">
-            <div>
-              <p className="font-medium">{med.name}</p>
-              <p className="text-sm text-muted-foreground">{med.dosage} - {med.frequency}</p>
-            </div>
-            <Badge variant="secondary">Taken</Badge>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  if (!isToday) {
-    return (
-      <div className="p-6 bg-gray-50 rounded-lg border border-gray-200 text-center">
-        <p className="text-muted-foreground">
-          {isBefore(new Date(date), new Date()) 
-            ? "This day has passed. You cannot mark medications as taken for past dates."
-            : "You can mark medications as taken when this day arrives."}
-        </p>
-      </div>
-    );
-  }
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-4">
-        {medications.map((med) => (
-          <div key={med.id} className="flex items-center justify-between p-4 bg-accent/50 rounded-lg">
-            <div>
-              <h4 className="font-medium">{med.name}</h4>
-              <p className="text-sm text-muted-foreground">{med.dosage} - {med.frequency}</p>
+    <div className="space-y-4">
+      {/* Medication List */}
+      <div className="space-y-2">
+        {medications.map((med) => {
+          const isMedTaken = takenMedications.some(m => m.id === med.id);
+          return (
+            <div key={med.id} className="flex items-center justify-between p-3 bg-accent/50 rounded-lg">
+              <div>
+                <h4 className="font-medium">{med.name}</h4>
+                <p className="text-sm text-muted-foreground">{med.dosage} - {med.frequency}</p>
+              </div>
+              <Badge variant={isMedTaken ? "secondary" : "destructive"}>
+                {isMedTaken ? "Taken" : "Pending"}
+              </Badge>
             </div>
-            <Badge variant="outline">Pending</Badge>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center gap-4">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => fileInputRef.current?.click()}
-            className="flex-1"
-          >
-            <Image className="w-4 h-4 mr-2" />
-            {selectedImage ? "Change Photo" : "Add Photo (Optional)"}
-          </Button>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleImageSelect}
-            accept="image/*"
-            className="hidden"
-          />
-          <Button
-            onClick={handleMarkTaken}
-            disabled={isSubmitting}
-            className="flex-1 bg-gradient-to-r from-blue-500 to-green-500 hover:shadow-lg transition-colors duration-300"
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Marking as Taken...
-              </>
-            ) : (
-              "Mark All as Taken"
-            )}
-          </Button>
-        </div>
+      {/* Status and Actions */}
+      <div className="mt-6">
+        {isTaken ? (
+          <div className="flex items-center gap-2 text-green-600">
+            <Check className="w-5 h-5" />
+            <span className="font-medium">All medications taken for this day</span>
+          </div>
+        ) : partialTaken ? (
+          <div className="flex items-center gap-2 text-yellow-600">
+            <AlertTriangle className="w-5 h-5" />
+            <span className="font-medium">
+              {takenMedications.length} of {medications.length} medications taken
+            </span>
+          </div>
+        ) : isToday ? (
+          <div className="flex items-center gap-2 text-blue-600">
+            <Clock className="w-5 h-5" />
+            <span className="font-medium">Medications pending for today</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-red-600">
+            <AlertTriangle className="w-5 h-5" />
+            <span className="font-medium">Medications not taken</span>
+          </div>
+        )}
 
-        {imagePreview && (
-          <div className="relative">
-            <img
-              src={imagePreview}
-              alt="Medication proof"
-              className="w-full h-48 object-cover rounded-lg"
-            />
-            <Button
-              variant="destructive"
-              size="sm"
-              className="absolute top-2 right-2"
-              onClick={() => {
-                setSelectedImage(null);
-                setImagePreview(null);
-              }}
-            >
-              Remove
+        {!isTaken && isToday && (
+          <div className="mt-4 flex flex-col sm:flex-row gap-2">
+            <Button onClick={() => onMarkTaken(date)}>
+              Mark All as Taken
+            </Button>
+            <Button variant="outline" asChild>
+              <label className="cursor-pointer">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleImageUpload}
+                  capture="environment"
+                />
+                <Image className="w-4 h-4 mr-2" />
+                Upload Photo Proof
+              </label>
             </Button>
           </div>
         )}

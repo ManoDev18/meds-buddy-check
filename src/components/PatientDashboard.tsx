@@ -38,8 +38,22 @@ const PatientDashboard = () => {
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
   const isTodaySelected = isToday(selectedDate);
 
-  const takenDates = new Set(medicationLogs?.map(log => log.date) || []);
-  const isSelectedDateTaken = takenDates.has(selectedDateStr);
+  // Create a map of date -> medication IDs that were taken
+  const medicationTakenMap = medicationLogs?.reduce((map, log) => {
+    const dateStr = log.date;
+    if (!map.has(dateStr)) {
+      map.set(dateStr, new Set());
+    }
+    map.get(dateStr)?.add(log.medication_id);
+    return map;
+  }, new Map<string, Set<string>>());
+
+  // Check which medications were taken on the selected date
+  const takenMedications = medications?.filter(med => 
+    medicationTakenMap?.get(selectedDateStr)?.has(med.id)
+  ) || [];
+  const allMedicationsTaken = takenMedications.length === medications?.length;
+  const someMedicationsTaken = takenMedications.length > 0;
 
   const handleMarkTaken = async (date: string, imageFile?: File) => {
     if (!medications?.length) {
@@ -52,19 +66,34 @@ const PatientDashboard = () => {
     }
 
     try {
-      // Mark all medications as taken for the day
+      // Only mark medications that haven't been taken yet
+      const medicationsToMark = medications.filter(med => 
+        !medicationTakenMap?.get(date)?.has(med.id)
+      );
+
+      if (medicationsToMark.length === 0) {
+        toast({
+          title: "Already taken",
+          description: "All medications have already been marked as taken for today",
+        });
+        return;
+      }
+
       await Promise.all(
-        medications.map(med => 
+        medicationsToMark.map(med => 
           markMedicationTaken.mutateAsync({
             medicationId: med.id,
             date,
+            image: imageFile,
           })
         )
       );
 
       toast({
         title: "Success",
-        description: "Medications marked as taken",
+        description: medicationsToMark.length === medications.length
+          ? "All medications marked as taken"
+          : `${medicationsToMark.length} medication(s) marked as taken`,
       });
     } catch (error) {
       console.error('Error marking medications as taken:', error);
@@ -106,7 +135,13 @@ const PatientDashboard = () => {
             <div className="text-white/80">Day Streak</div>
           </div>
           <div className="bg-white/10 rounded-xl p-4 backdrop-blur-sm">
-            <div className="text-2xl font-bold">{takenDates.has(todayStr) ? "✓" : "○"}</div>
+            <div className="text-2xl font-bold">
+              {medicationTakenMap?.has(todayStr) 
+                ? medications?.length === medicationTakenMap?.get(todayStr)?.size
+                  ? "✓" 
+                  : "○"
+                : "○"}
+            </div>
             <div className="text-white/80">Today's Status</div>
           </div>
           <div className="bg-white/10 rounded-xl p-4 backdrop-blur-sm">
@@ -130,7 +165,9 @@ const PatientDashboard = () => {
               {medications?.length ? (
                 <MedicationTracker 
                   date={selectedDateStr}
-                  isTaken={isSelectedDateTaken}
+                  isTaken={allMedicationsTaken}
+                  partialTaken={someMedicationsTaken && !allMedicationsTaken}
+                  takenMedications={takenMedications}
                   onMarkTaken={handleMarkTaken}
                   isToday={isTodaySelected}
                   medications={medications}
@@ -162,19 +199,26 @@ const PatientDashboard = () => {
                 components={{
                   DayContent: ({ date }) => {
                     const dateStr = format(date, 'yyyy-MM-dd');
-                    const isTaken = takenDates.has(dateStr);
+                    const medsTaken = medications?.filter(med => 
+                      medicationTakenMap?.get(dateStr)?.has(med.id)
+                    ) || [];
+                    const allTaken = medsTaken.length === medications?.length;
+                    const someTaken = medsTaken.length > 0;
                     const isPast = isBefore(date, startOfDay(today));
                     const isCurrentDay = isToday(date);
                     
                     return (
                       <div className="relative w-full h-full flex items-center justify-center">
                         <span>{date.getDate()}</span>
-                        {isTaken && (
+                        {allTaken && (
                           <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
                             <Check className="w-2 h-2 text-white" />
                           </div>
                         )}
-                        {!isTaken && isPast && !isCurrentDay && (
+                        {someTaken && !allTaken && (
+                          <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-500 rounded-full"></div>
+                        )}
+                        {!someTaken && isPast && !isCurrentDay && (
                           <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-400 rounded-full"></div>
                         )}
                       </div>
@@ -186,7 +230,11 @@ const PatientDashboard = () => {
               <div className="mt-4 space-y-2 text-sm">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                  <span>Medication taken</span>
+                  <span>All medications taken</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                  <span>Some medications taken</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 bg-red-400 rounded-full"></div>
