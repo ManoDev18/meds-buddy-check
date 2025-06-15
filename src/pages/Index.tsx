@@ -56,8 +56,12 @@ const Index = () => {
             </div>
           </div>
           <div className="flex gap-4 items-center">
+            {userType === "caretaker" ? (
+            <div className="flex gap-4">
             <Link to="/view-list" className="font-medium hover:text-blue-500 duration-300">View List</Link>
             <Link to="/medications" className="font-medium hover:text-blue-500 duration-300">Medications</Link>
+          </div>
+        ) : null}
             <Button
               variant="outline"
               onClick={switchUserType}
