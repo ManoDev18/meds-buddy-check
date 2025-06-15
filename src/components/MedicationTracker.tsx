@@ -1,4 +1,3 @@
-// MedicationTracker.tsx
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Check, AlertTriangle, Clock, Image } from "lucide-react";
